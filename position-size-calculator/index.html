@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Position Size Calculator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">TRADING TOOL</p>
+        <h1>Position Size Calculator</h1>
+        <p class="subtitle">Dobierz liczbę kontraktów dokładnie pod swój stop loss.</p>
+      </div>
+      <button id="themeBtn" class="icon-btn" title="Zmień motyw">☾</button>
+    </header>
+
+    <section class="grid">
+      <div class="card form-card">
+        <div class="section-title">
+          <span class="step">1</span>
+          <div><h2>Ustawienia pozycji</h2><p>Wpisz konto, ryzyko i stop loss.</p></div>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Instrument</span>
+            <select id="instrument">
+              <option value="NQ">NQ — Nasdaq 100 E-mini</option>
+              <option value="MNQ" selected>MNQ — Micro Nasdaq 100</option>
+              <option value="ES">ES — S&P 500 E-mini</option>
+              <option value="MES">MES — Micro S&P 500</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Wielkość konta ($)</span>
+            <input id="account" type="number" min="0" step="100" value="25000">
+          </label>
+
+          <label>
+            <span>Ryzyko</span>
+            <div class="input-combo">
+              <input id="riskValue" type="number" min="0" step="0.1" value="1">
+              <select id="riskMode" aria-label="Tryb ryzyka">
+                <option value="percent">%</option>
+                <option value="dollar">$</option>
+              </select>
+            </div>
+          </label>
+
+          <label>
+            <span>Sposób podania stop lossa</span>
+            <select id="slMode">
+              <option value="points">SL w punktach</option>
+              <option value="prices">Cena wejścia i SL</option>
+            </select>
+          </label>
+
+          <label id="pointsWrap">
+            <span>Stop loss (punkty)</span>
+            <input id="slPoints" type="number" min="0" step="0.25" value="20">
+          </label>
+
+          <label id="entryWrap" class="hidden">
+            <span>Cena wejścia</span>
+            <input id="entryPrice" type="number" min="0" step="0.25" placeholder="np. 22150.00">
+          </label>
+
+          <label id="stopWrap" class="hidden">
+            <span>Cena stop lossa</span>
+            <input id="stopPrice" type="number" min="0" step="0.25" placeholder="np. 22130.00">
+          </label>
+
+          <label>
+            <span>Kierunek</span>
+            <select id="direction">
+              <option value="long">LONG</option>
+              <option value="short">SHORT</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Planowane RR</span>
+            <input id="rr" type="number" min="0.1" step="0.1" value="2">
+          </label>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+        <button id="calculateBtn" class="primary-btn">OBLICZ POZYCJĘ</button>
+      </div>
+
+      <div class="card result-card">
+        <div class="section-title">
+          <span class="step">2</span>
+          <div><h2>Wynik</h2><p>Maksymalna bezpieczna pozycja.</p></div>
+        </div>
+
+        <div class="hero-result">
+          <span id="resultInstrument">MNQ</span>
+          <strong id="contracts">6</strong>
+          <p id="contractsLabel">kontraktów</p>
+        </div>
+
+        <div class="stats">
+          <div><span>Założone ryzyko</span><strong id="riskBudget">$250.00</strong></div>
+          <div><span>Ryzyko na 1 kontrakt</span><strong id="riskPerContract">$40.00</strong></div>
+          <div><span>Rzeczywiste ryzyko</span><strong id="actualRisk">$240.00</strong></div>
+          <div><span>Ryzyko konta</span><strong id="actualPercent">0.96%</strong></div>
+          <div><span>Potencjalny zysk</span><strong id="potentialProfit">$480.00</strong></div>
+          <div><span>Niewykorzystany limit</span><strong id="unusedRisk">$10.00</strong></div>
+        </div>
+
+        <div class="trade-plan">
+          <h3>Plan transakcji</h3>
+          <div><span>Stop loss</span><strong id="planSl">20.00 pkt</strong></div>
+          <div><span>Wartość punktu</span><strong id="pointValue">$2.00</strong></div>
+          <div><span>Take profit</span><strong id="takeProfit">40.00 pkt</strong></div>
+          <div id="tpPriceRow" class="hidden"><span>Cena TP</span><strong id="tpPrice">—</strong></div>
+        </div>
+
+        <div id="warning" class="warning hidden"></div>
+      </div>
+    </section>
+
+    <section class="card history-card">
+      <div class="history-header">
+        <div><h2>Ostatnie obliczenia</h2><p>Historia zapisuje się tylko na tym komputerze.</p></div>
+        <button id="clearHistory" class="ghost-btn">Wyczyść historię</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Instrument</th><th>Konto</th><th>SL</th><th>Limit</th><th>Kontrakty</th><th>Ryzyko</th><th>Pot. zysk</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <p id="emptyHistory" class="empty">Brak zapisanych obliczeń.</p>
+    </section>
+
+    <footer>Position Size Calculator • dane pozostają lokalnie na komputerze</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

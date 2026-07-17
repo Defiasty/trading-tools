@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Edit Trade — Trading Tracker{% endblock %}
+{% block content %}
+<header class="top">
+    <div>
+        <div class="pretitle">Journal / Trade #{{ trade.id }}</div>
+        <h1>Edit Trade</h1>
+        <p>Change the date, time or any other trade detail. Your history stays intact.</p>
+    </div>
+    <a href="{{ url_for('index') }}#history" class="btn">Cancel</a>
+</header>
+
+<section class="panel edit-panel">
+    <div class="panel-head"><div><h2>Trade Details</h2><small>Saved values are loaded below</small></div><span>{{ trade.result() }} • {{ trade.pnl()|round(2) }} {{ currency }}</span></div>
+    <form class="form" action="{{ url_for('edit', trade_id=trade.id) }}" method="post" enctype="multipart/form-data">
+        <label>Date <input type="date" name="date" value="{{ trade.date.strftime('%Y-%m-%d') }}" required></label>
+        <label>Time <input type="time" name="time" value="{{ trade.time or '' }}"></label>
+        <label>Session <select name="session">{% for session in sessions %}<option {{ 'selected' if trade.session == session else '' }}>{{ session }}</option>{% endfor %}</select></label>
+        <label>Instrument <input name="instrument" value="{{ trade.instrument }}" required></label>
+        <label>Direction <select name="direction"><option value="Kupno" {{ 'selected' if trade.is_long() else '' }}>Buy</option><option value="Sprzedaż" {{ 'selected' if not trade.is_long() else '' }}>Sell</option></select></label>
+        <label>Contracts <input type="number" step="any" min="0.01" name="contracts" value="{{ trade.contracts }}" required></label>
+        <label>Entry <input type="number" step="any" name="entry_price" value="{{ trade.entry_price }}" required></label>
+        <label>Exit <input type="number" step="any" name="exit_price" value="{{ trade.exit_price }}" required></label>
+        <label>Stop Loss <input type="number" step="any" name="stop_loss" value="{{ trade.stop_loss if trade.stop_loss is not none else '' }}"></label>
+        <label>Take Profit <input type="number" step="any" name="take_profit" value="{{ trade.take_profit if trade.take_profit is not none else '' }}"></label>
+        <label>Grade <select name="grade"><option></option>{% for grade in ['A+', 'A', 'B', 'C', 'F'] %}<option {{ 'selected' if trade.grade == grade else '' }}>{{ grade }}</option>{% endfor %}</select></label>
+        <label class="wide">Notes <textarea name="notes" placeholder="Why did I enter? What went well? What should I improve?">{{ trade.notes or '' }}</textarea></label>
+        <label class="wide">Replace Screenshot <input type="file" name="image" accept="image/*"></label>
+        {% if trade.image %}<label class="check-row wide"><input type="checkbox" name="remove_image" value="1"><span>Remove the current screenshot</span></label>{% endif %}
+        <div class="form-actions wide"><button class="btn primary" type="submit">Save Changes</button><a class="btn" href="{{ url_for('index') }}#history">Cancel</a></div>
+    </form>
+</section>
+{% endblock %}

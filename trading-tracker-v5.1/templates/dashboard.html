@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+    <div>
+        <div class="pretitle">Topstep / Journal / Performance</div>
+        <h1>Trading Dashboard</h1>
+        <p>A focused trading journal with automatic P/L, RR and Evaluation progress.</p>
+    </div>
+    <div class="top-actions">
+        <a href="#add-trade" class="btn primary" data-add-trade>+ Add Trade</a>
+        <a href="{{ url_for('settings') }}" class="btn">Settings</a>
+    </div>
+</header>
+
+<section class="metric-grid">
+    <div class="metric green"><span>Evaluation Progress</span><strong>{{ stats.total }} / {{ stats.target }} {{ currency }}</strong><div class="progress"><i style="width:{{ stats.progress }}%"></i></div><small>Remaining: {{ stats.remaining_target }} {{ currency }}</small></div>
+    <div class="metric red"><span>Remaining Drawdown</span><strong>{{ stats.remaining_drawdown }} {{ currency }}</strong><small>Based on your account settings</small></div>
+    <div class="metric cyan"><span>Days Traded</span><strong>{{ stats.days_traded }}</strong><small>Unique trading days</small></div>
+    <div class="metric green"><span>Net P/L</span><strong>{{ stats.total }} {{ currency }}</strong><small>Balance: {{ stats.current_balance }} {{ currency }}</small></div>
+    <div class="metric purple"><span>Win Rate</span><strong>{{ stats.win_rate }}%</strong><small>{{ stats.wins }}W / {{ stats.losses }}L / {{ stats.be }}BE</small></div>
+    <div class="metric blue"><span>Profit Factor</span><strong>{{ stats.profit_factor }}</strong><small>Gross profit / gross loss</small></div>
+    <div class="metric orange"><span>Average RR</span><strong>{{ stats.avg_rr }}</strong><small>Average planned RR</small></div>
+    <div class="metric"><span>Expectancy</span><strong>{{ stats.expectancy }} {{ currency }}</strong><small>Average per trade</small></div>
+</section>
+
+<section id="analytics" class="charts-grid">
+    <div class="panel big chart-panel">
+        <div class="panel-head">
+            <div><h2>Equity Curve</h2><small>Balance after every trade</small></div>
+            <span>{{ all_count }} trades • hover for details</span>
+        </div>
+        <div class="chart-wrap equity-chart"><canvas id="equityChart" aria-label="Equity curve"></canvas></div>
+    </div>
+    <div class="panel chart-panel">
+        <div class="panel-head"><div><h2>Results</h2><small>Win, loss and break-even split</small></div></div>
+        <div class="chart-wrap compact-chart"><canvas id="resultChart" aria-label="Trade results chart"></canvas></div>
+    </div>
+    <div class="panel chart-panel">
+        <div class="panel-head"><div><h2>Monthly P/L</h2><small>Net performance by month</small></div></div>
+        <div class="chart-wrap compact-chart"><canvas id="monthlyChart" aria-label="Monthly profit and loss chart"></canvas></div>
+    </div>
+    <div class="panel chart-panel">
+        <div class="panel-head"><div><h2>Session P/L</h2><small>Net performance by session</small></div></div>
+        <div class="chart-wrap compact-chart"><canvas id="sessionChart" aria-label="Session profit and loss chart"></canvas></div>
+    </div>
+</section>
+
+<section class="split">
+<div id="add-trade" class="panel anchor-section">
+    <div class="panel-head">
+        <div><h2>New Trade</h2><small>Date and time are captured automatically when saved</small></div>
+        <span>NQ / MNQ / ES / MES</span>
+    </div>
+    <form class="form" action="{{ url_for('add') }}" method="post" enctype="multipart/form-data" data-new-trade-form>
+        <label>Date <input id="trade-date" type="date" name="date" value="{{ default_date }}" required></label>
+        <label>Time <input id="trade-time" type="time" name="time" value="{{ default_time }}" required></label>
+        <label>Session <select name="session">{% for session in sessions %}<option {{ 'selected' if session == 'New York' else '' }}>{{ session }}</option>{% endfor %}</select></label>
+        <label>Instrument <input name="instrument" placeholder="MNQ" required></label>
+        <label>Direction <select name="direction"><option value="Kupno">Buy</option><option value="Sprzedaż">Sell</option></select></label>
+        <label>Contracts <input type="number" step="any" min="0.01" name="contracts" value="1" required></label>
+        <label>Entry <input type="number" step="any" name="entry_price" required></label>
+        <label>Exit <input type="number" step="any" name="exit_price" required></label>
+        <label>Stop Loss <input type="number" step="any" name="stop_loss"></label>
+        <label>Take Profit <input type="number" step="any" name="take_profit"></label>
+        <label>Grade <select name="grade"><option></option><option>A+</option><option>A</option><option>B</option><option>C</option><option>F</option></select></label>
+        <label class="wide">Notes <textarea name="notes" placeholder="Why did I enter? What went well? What should I improve?"></textarea></label>
+        <label class="wide">Screenshot <input type="file" name="image" accept="image/*"></label>
+        <button class="btn primary wide" type="submit">Save Trade</button>
+    </form>
+</div>
+<div class="right-stack">
+    <div id="calendar" class="panel anchor-section"><div class="panel-head"><div><h2>P/L Calendar</h2><small>{{ current_month }}</small></div><span>Current month</span></div><div class="calendar">{% for d in calendar_days %}<div class="day {{ 'day-plus' if d.pnl > 0 else 'day-minus' if d.pnl < 0 else '' }}"><b>{{ d.day }}</b><span>{{ d.pnl }} {{ currency }}</span>{% if d.count %}<small>{{ d.count }} trade{{ '' if d.count == 1 else 's' }}</small>{% endif %}</div>{% endfor %}</div></div>
+    <div class="panel"><div class="panel-head"><h2>Best Instruments</h2></div>{% for name, value in pnl_by_instrument %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% else %}<p class="muted">No data yet.</p>{% endfor %}</div>
+    <div class="panel"><div class="panel-head"><h2>Sessions</h2></div>{% for name, value in pnl_by_session %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% else %}<p class="muted">No data yet.</p>{% endfor %}</div>
+</div>
+</section>
+
+<section id="history" class="panel anchor-section">
+<div class="panel-head"><div><h2>Trade History</h2><small>Edit any saved trade without losing your history</small></div><span>{{ stats.count }} filtered results</span></div>
+<form class="filters" method="get">
+    <input name="q" placeholder="Search notes or grade" value="{{ filters.get('q', '') }}">
+    <select name="instrument"><option value="">All instruments</option>{% for i in instruments %}<option value="{{ i }}" {{ 'selected' if filters.get('instrument') == i else '' }}>{{ i }}</option>{% endfor %}</select>
+    <select name="session"><option value="">All sessions</option>{% for s in sessions %}<option value="{{ s }}" {{ 'selected' if filters.get('session') == s else '' }}>{{ s }}</option>{% endfor %}</select>
+    <select name="result"><option value="">All results</option><option value="WIN" {{ 'selected' if filters.get('result') == 'WIN' else '' }}>WIN</option><option value="LOSS" {{ 'selected' if filters.get('result') == 'LOSS' else '' }}>LOSS</option><option value="BE" {{ 'selected' if filters.get('result') == 'BE' else '' }}>BE</option></select>
+    <button class="btn" type="submit">Filter</button><a class="btn" href="{{ url_for('index') }}#history">Reset</a>
+</form>
+<div class="table-wrap"><table><thead><tr><th>Date & Time</th><th>Session</th><th>Instrument</th><th>Direction</th><th>Contracts</th><th>P/L</th><th>RR</th><th>Realized R</th><th>Grade</th><th>Screenshot</th><th>Actions</th></tr></thead><tbody>
+{% for t in trades %}<tr>
+<td>{{ t.date }}{% if t.time %}<small class="cell-subline">{{ t.time }}</small>{% endif %}</td><td>{{ t.session }}</td><td><b>{{ t.instrument }}</b></td><td><span class="pill {{ 'buy' if t.is_long() else 'sell' }}">{{ t.direction_label() }}</span></td><td>{{ t.contracts }}</td><td class="{{ 'plus' if t.pnl() >= 0 else 'minus' }}">{{ t.pnl()|round(2) }} {{ currency }}</td><td>{{ t.rr()|round(2) if t.rr() is not none else '—' }}</td><td>{{ t.realized_r()|round(2) if t.realized_r() is not none else '—' }}</td><td>{{ t.grade or '—' }}</td><td>{% if t.image %}<button class="link-btn" onclick="openImageModal('{{ url_for('uploaded', filename=t.image) }}')" type="button">Preview</button>{% else %}—{% endif %}</td><td><div class="table-actions"><a class="action-btn edit-action" href="{{ url_for('edit', trade_id=t.id) }}">Edit</a><form action="{{ url_for('delete', trade_id=t.id) }}" method="post"><button class="action-btn delete-action" onclick="return confirm('Delete this trade?')" type="submit">Delete</button></form></div></td>
+</tr>{% else %}<tr><td colspan="11" class="empty">No trades found.</td></tr>{% endfor %}
+</tbody></table></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/app.js') }}"></script>{% endblock %}

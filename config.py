@@ -2,7 +2,7 @@ import os
 import sys
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DEFAULT_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", BASE_DIR), "TradingTracker") if getattr(sys, "frozen", False) else BASE_DIR
+DEFAULT_DATA_DIR = r"D:\TradingTrackerData" if getattr(sys, "frozen", False) else BASE_DIR
 DATA_DIR = os.path.abspath(os.environ.get("TRACKER_DATA_DIR", DEFAULT_DATA_DIR))
 os.makedirs(DATA_DIR, exist_ok=True)
 

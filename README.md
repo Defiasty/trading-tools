@@ -22,7 +22,7 @@ Use **Backup** in the app to download a ZIP containing the local database, scree
 
 ## Updates
 
-Installing a newer version over the existing installation preserves the database, screenshots and account settings stored under `%LOCALAPPDATA%\TradingTracker`.
+Installing a newer version over the existing installation preserves the database, screenshots, WebView profile and account settings stored under `D:\TradingTrackerData`.
 
 ## Highlights
 

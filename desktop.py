@@ -31,4 +31,6 @@ if __name__ == "__main__":
         min_size=(980, 680),
         background_color="#050716",
     )
-    webview.start(icon=icon_path if os.path.exists(icon_path) else None)
+    webview_storage = os.path.join(app.config["DATA_DIR"], "webview")
+    os.makedirs(webview_storage, exist_ok=True)
+    webview.start(icon=icon_path if os.path.exists(icon_path) else None, storage_path=webview_storage, private_mode=False)

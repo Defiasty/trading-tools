@@ -8,6 +8,7 @@
 <section class="panel settings-panel">
     <form class="form" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Account Profile <select name="account_profile" data-account-profile>{% for key, profile in topstep_profiles.items() %}<option value="{{ key }}" {{ 'selected' if account_profile == key else '' }} data-balance="{{ profile.balance or '' }}" data-target="{{ profile.target or '' }}" data-max-loss="{{ profile.max_loss or '' }}" data-daily-loss="{{ profile.daily_loss or '' }}">{{ profile.label }}</option>{% endfor %}</select></label>
         <label>Currency <input name="currency" value="{{ currency }}" required></label>
         <label>Starting Balance <input type="number" step="any" name="balance" value="{{ balance }}" required></label>
         <label>Profit Target <input type="number" step="any" name="profit_target" value="{{ profit_target }}" required></label>
@@ -17,14 +18,31 @@
         <button class="btn primary wide" type="submit">Save Settings</button>
     </form>
 </section>
+<section class="panel settings-panel update-panel"><div class="panel-head"><div><h2>Updates & installation</h2><small>Code updates preserve your local journal</small></div><span>v6.0.0</span></div><p class="muted">Run <b>UPDATE.bat</b> from the application folder to download the newest version. For a fresh Windows installation, use <b>INSTALL.bat</b>.</p></section>
 <section class="panel settings-panel data-tools-panel">
     <div class="panel-head"><div><h2>Data tools</h2><small>Import, export and protect your journal</small></div></div>
     <div class="data-tools-actions"><a class="btn" href="{{ url_for('export_csv') }}">Export trades to CSV</a><a class="btn primary" href="{{ url_for('backup') }}">Download full backup</a></div>
     <form class="import-form" action="{{ url_for('import_csv') }}" method="post" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Platform <select name="platform"><option value="auto">Auto detect</option><option value="topstepx">TopstepX</option><option value="tradovate">Tradovate</option><option value="ninjatrader">NinjaTrader</option><option value="tracker">Tracker template</option></select></label>
         <label>Import CSV <input type="file" name="csv_file" accept=".csv,text/csv" required></label>
         <button class="btn" type="submit">Import trades</button>
     </form>
     <p class="muted import-help">Required columns: date, instrument, direction, contracts, entry_price and exit_price. Export a CSV first to get the complete template.</p>
 </section>
 {% endblock %}
+{% block scripts %}<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const profile = document.querySelector('[data-account-profile]');
+    if (!profile) return;
+    const mapping = { balance: 'balance', target: 'profit_target', maxLoss: 'max_loss_limit', dailyLoss: 'daily_loss_limit' };
+    profile.addEventListener('change', () => {
+        const option = profile.selectedOptions[0];
+        Object.entries(mapping).forEach(([dataKey, inputName]) => {
+            const value = option.dataset[dataKey];
+            const input = document.querySelector(`[name="${inputName}"]`);
+            if (input && value) input.value = value;
+        });
+    });
+});
+</script>{% endblock %}

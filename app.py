@@ -11,7 +11,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from werkzeug.utils import secure_filename
 
 from config import Config
-from models import Trade, db
+from models import PlaybookSetup, Trade, db
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -64,6 +64,19 @@ def daily_loss_limit():
 
 def consistency_limit():
     return number_setting("consistency_limit.txt", 50)
+
+
+TOPSTEP_PROFILES = {
+    "custom": {"label": "Custom", "balance": None, "target": None, "max_loss": None, "daily_loss": None},
+    "50k": {"label": "Topstep 50K", "balance": 50000, "target": 3000, "max_loss": 2000, "daily_loss": 1000},
+    "100k": {"label": "Topstep 100K", "balance": 100000, "target": 6000, "max_loss": 3000, "daily_loss": 2000},
+    "150k": {"label": "Topstep 150K", "balance": 150000, "target": 9000, "max_loss": 4500, "daily_loss": 3000},
+}
+
+
+def account_profile():
+    value = setting("account_profile.txt", "custom")
+    return value if value in TOPSTEP_PROFILES else "custom"
 
 
 def csrf_token():
@@ -197,7 +210,9 @@ def calc_stats(trades):
     loss_limit = max_loss_limit()
     progress = max(0, min(100, total / target * 100)) if target > 0 else 0
     remaining_target = max(0, target - total)
-    remaining_drawdown = max(0, loss_limit + min(total, 0))
+    current_equity = start + total
+    trailing_floor = max(start - loss_limit, peak - loss_limit)
+    remaining_drawdown = max(0, current_equity - trailing_floor)
     days_traded = len({trade.date for trade in trades})
     pnl_by_day = defaultdict(float)
     for trade in trades:
@@ -228,6 +243,7 @@ def calc_stats(trades):
         "progress": round(progress, 1),
         "remaining_target": round(remaining_target, 2),
         "remaining_drawdown": round(remaining_drawdown, 2),
+        "trailing_floor": round(trailing_floor, 2),
         "days_traded": days_traded,
         "best_day": round(best_day, 2),
         "worst_day": round(worst_day, 2),
@@ -273,6 +289,7 @@ def index():
 
     instruments = sorted({trade.instrument for trade in all_trades})
     sessions = ["Asia", "London", "New York", "Power Hour", "Other"]
+    playbook_setups = PlaybookSetup.query.filter_by(active=True).order_by(PlaybookSetup.name).all()
 
     pnl_by_instrument = defaultdict(float)
     pnl_by_session = defaultdict(float)
@@ -318,6 +335,7 @@ def index():
         currency=currency(),
         instruments=instruments,
         sessions=sessions,
+        playbook_setups=playbook_setups,
         pnl_by_instrument=sorted(pnl_by_instrument.items(), key=lambda item: item[1], reverse=True),
         pnl_by_session=sorted(pnl_by_session.items(), key=lambda item: item[1], reverse=True),
         pnl_by_setup=sorted(pnl_by_setup.items(), key=lambda item: item[1], reverse=True),
@@ -367,6 +385,7 @@ def add():
 def edit(trade_id):
     trade = Trade.query.get_or_404(trade_id)
     sessions = ["Asia", "London", "New York", "Power Hour", "Other"]
+    playbook_setups = PlaybookSetup.query.filter_by(active=True).order_by(PlaybookSetup.name).all()
 
     if request.method == "POST":
         old_image = trade.image
@@ -395,6 +414,7 @@ def edit(trade_id):
         "edit_trade.html",
         trade=trade,
         sessions=sessions,
+        playbook_setups=playbook_setups,
         currency=currency(),
         balance=balance(),
         stats={"start_balance": balance()},
@@ -415,13 +435,17 @@ def delete(trade_id):
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
+        selected_profile = request.form.get("account_profile", "custom")
+        if selected_profile not in TOPSTEP_PROFILES:
+            selected_profile = "custom"
+        profile = TOPSTEP_PROFILES[selected_profile]
         currency_value = (request.form.get("currency") or "USD").strip().upper()
         try:
             numeric = {
-                "balance.txt": required_float(request.form.get("balance"), "Starting balance"),
-                "profit_target.txt": required_float(request.form.get("profit_target"), "Profit target"),
-                "max_loss_limit.txt": required_float(request.form.get("max_loss_limit"), "Maximum loss limit"),
-                "daily_loss_limit.txt": required_float(request.form.get("daily_loss_limit"), "Daily loss limit"),
+                "balance.txt": profile["balance"] or required_float(request.form.get("balance"), "Starting balance"),
+                "profit_target.txt": profile["target"] or required_float(request.form.get("profit_target"), "Profit target"),
+                "max_loss_limit.txt": profile["max_loss"] or required_float(request.form.get("max_loss_limit"), "Maximum loss limit"),
+                "daily_loss_limit.txt": profile["daily_loss"] or required_float(request.form.get("daily_loss_limit"), "Daily loss limit"),
                 "consistency_limit.txt": required_float(request.form.get("consistency_limit"), "Consistency limit"),
             }
         except ValueError as exc:
@@ -430,7 +454,7 @@ def settings():
         if len(currency_value) != 3 or any(value <= 0 for value in numeric.values()):
             flash("Currency must have 3 letters and all limits must be greater than zero.", "danger")
             return redirect(url_for("settings"))
-        values = {"currency.txt": currency_value, **{name: str(value) for name, value in numeric.items()}}
+        values = {"currency.txt": currency_value, "account_profile.txt": selected_profile, **{name: str(value) for name, value in numeric.items()}}
         for filename, value in values.items():
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(value)
@@ -445,6 +469,8 @@ def settings():
         max_loss_limit=max_loss_limit(),
         daily_loss_limit=daily_loss_limit(),
         consistency_limit=consistency_limit(),
+        account_profile=account_profile(),
+        topstep_profiles=TOPSTEP_PROFILES,
         stats={"start_balance": balance()},
     )
 
@@ -457,6 +483,59 @@ def calculator():
         balance=balance(),
         stats={"start_balance": balance()},
     )
+
+
+@app.route("/playbook", methods=["GET", "POST"])
+def playbook():
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        if not name:
+            flash("Setup name is required.", "danger")
+        elif PlaybookSetup.query.filter(db.func.lower(PlaybookSetup.name) == name.lower()).first():
+            flash("A setup with this name already exists.", "danger")
+        else:
+            setup = PlaybookSetup(name=name)
+            apply_setup_form(setup, request.form)
+            db.session.add(setup)
+            db.session.commit()
+            flash("Setup added to the playbook.", "success")
+        return redirect(url_for("playbook"))
+    setups = PlaybookSetup.query.order_by(PlaybookSetup.active.desc(), PlaybookSetup.name).all()
+    performance = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0})
+    for trade in Trade.query.all():
+        key = trade.setup or ""
+        performance[key]["count"] += 1
+        performance[key]["pnl"] += trade.pnl()
+        performance[key]["wins"] += int(trade.pnl() > 0)
+    return render_template("playbook.html", setups=setups, performance=performance, currency=currency(), stats={"start_balance": balance()})
+
+
+def apply_setup_form(setup, form):
+    setup.name = (form.get("name") or setup.name).strip()
+    setup.description = (form.get("description") or "").strip()
+    setup.entry_rules = (form.get("entry_rules") or "").strip()
+    setup.invalidation_rules = (form.get("invalidation_rules") or "").strip()
+    setup.management_rules = (form.get("management_rules") or "").strip()
+    setup.checklist = (form.get("checklist") or "").strip()
+    setup.active = form.get("active") == "1"
+
+
+@app.route("/playbook/<int:setup_id>/edit", methods=["POST"])
+def edit_setup(setup_id):
+    setup = PlaybookSetup.query.get_or_404(setup_id)
+    apply_setup_form(setup, request.form)
+    db.session.commit()
+    flash("Playbook setup updated.", "success")
+    return redirect(url_for("playbook"))
+
+
+@app.route("/playbook/<int:setup_id>/delete", methods=["POST"])
+def delete_setup(setup_id):
+    setup = PlaybookSetup.query.get_or_404(setup_id)
+    db.session.delete(setup)
+    db.session.commit()
+    flash("Setup removed from the playbook. Existing trades were not changed.", "info")
+    return redirect(url_for("playbook"))
 
 
 @app.route("/review/<int:trade_id>")
@@ -517,10 +596,10 @@ def import_csv():
     try:
         text_stream = io.StringIO(upload.stream.read().decode("utf-8-sig"), newline=None)
         reader = csv.DictReader(text_stream)
-        required = {"date", "instrument", "direction", "contracts", "entry_price", "exit_price"}
-        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
-            raise ValueError(f"CSV must contain: {', '.join(sorted(required))}.")
-        for row in reader:
+        if not reader.fieldnames:
+            raise ValueError("CSV has no header row.")
+        for source_row in reader:
+            row = normalize_import_row(source_row, request.form.get("platform", "auto"))
             trade = Trade(date=date.today(), instrument="", direction="Buy", contracts=1, entry_price=0, exit_price=0)
             apply_trade_form(trade, row)
             db.session.add(trade)
@@ -531,6 +610,49 @@ def import_csv():
         db.session.rollback()
         flash(f"Import failed: {exc}", "danger")
     return redirect(url_for("index") + "#history")
+
+
+def normalize_import_row(source, platform="auto"):
+    row = {str(key).strip().lower().replace(" ", "_"): value for key, value in source.items() if key is not None}
+    aliases = {
+        "date": ["date", "trade_date", "closed_date", "exit_date", "entry_date"],
+        "time": ["time", "entry_time", "open_time", "filled_time"],
+        "instrument": ["instrument", "symbol", "contract", "market"],
+        "direction": ["direction", "side", "position", "market_pos."],
+        "contracts": ["contracts", "qty", "quantity", "size"],
+        "entry_price": ["entry_price", "entry", "avg_entry_price", "buy_price", "open_price"],
+        "exit_price": ["exit_price", "exit", "avg_exit_price", "sell_price", "close_price"],
+        "commission": ["commission", "commissions", "fees", "fee"],
+        "notes": ["notes", "comment", "comments"],
+    }
+    result = {}
+    for target, candidates in aliases.items():
+        result[target] = next((row[name] for name in candidates if name in row and str(row[name]).strip()), "")
+    for field in CSV_FIELDS:
+        if field in row and not result.get(field):
+            result[field] = row[field]
+    raw_date = str(result.get("date", "")).strip()
+    parsed_date = None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S"):
+        try:
+            parsed_date = datetime.strptime(raw_date, fmt)
+            break
+        except ValueError:
+            continue
+    if not parsed_date:
+        try:
+            parsed_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"Unsupported date: {raw_date}") from exc
+    result["date"] = parsed_date.strftime("%Y-%m-%d")
+    if not result.get("time") and parsed_date.time() != datetime.min.time():
+        result["time"] = parsed_date.strftime("%H:%M")
+    direction = str(result.get("direction", "")).strip().lower()
+    result["direction"] = "Buy" if direction in {"buy", "long", "b", "marketposition.long"} else "Sell" if direction in {"sell", "short", "s", "marketposition.short"} else result.get("direction")
+    missing = [field for field in ("date", "instrument", "direction", "contracts", "entry_price", "exit_price") if not str(result.get(field, "")).strip()]
+    if missing:
+        raise ValueError(f"Could not map columns: {', '.join(missing)}. Choose the correct platform or use the tracker CSV template.")
+    return result
 
 
 @app.route("/api/charts")

@@ -106,3 +106,17 @@ class Trade(db.Model):
         if p < 0:
             return "LOSS"
         return "BE"
+
+
+class PlaybookSetup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    entry_rules = db.Column(db.Text, nullable=True)
+    invalidation_rules = db.Column(db.Text, nullable=True)
+    management_rules = db.Column(db.Text, nullable=True)
+    checklist = db.Column(db.Text, nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+
+    def checklist_items(self):
+        return [item.strip() for item in (self.checklist or "").splitlines() if item.strip()]

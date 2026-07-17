@@ -26,7 +26,7 @@
         <label>Take Profit <input type="number" step="any" name="take_profit" value="{{ trade.take_profit if trade.take_profit is not none else '' }}"></label>
         <label>Grade <select name="grade"><option></option>{% for grade in ['A+', 'A', 'B', 'C', 'F'] %}<option {{ 'selected' if trade.grade == grade else '' }}>{{ grade }}</option>{% endfor %}</select></label>
         <label>Commission <input type="number" step="any" min="0" name="commission" value="{{ trade.commission or 0 }}"></label>
-        <label>Setup <input name="setup" value="{{ trade.setup or '' }}"></label>
+        <label>Setup <input name="setup" list="setup-list" value="{{ trade.setup or '' }}"><datalist id="setup-list">{% for setup in playbook_setups %}<option value="{{ setup.name }}">{% endfor %}</datalist></label>
         <label>Tags <input name="tags" value="{{ trade.tags or '' }}"></label>
         <label>Mistake <input name="mistake" value="{{ trade.mistake or '' }}"></label>
         <label>Emotion before <input name="emotion_before" value="{{ trade.emotion_before or '' }}"></label>

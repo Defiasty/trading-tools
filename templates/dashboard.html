@@ -16,7 +16,7 @@
 
 <section class="metric-grid">
     <div class="metric green"><span>Evaluation Progress</span><strong>{{ stats.total }} / {{ stats.target }} {{ currency }}</strong><div class="progress"><i style="width:{{ stats.progress }}%"></i></div><small>Remaining: {{ stats.remaining_target }} {{ currency }}</small></div>
-    <div class="metric red"><span>Remaining Drawdown</span><strong>{{ stats.remaining_drawdown }} {{ currency }}</strong><small>Based on your account settings</small></div>
+    <div class="metric red"><span>Remaining Drawdown</span><strong>{{ stats.remaining_drawdown }} {{ currency }}</strong><small>Trailing floor: {{ stats.trailing_floor }} {{ currency }}</small></div>
     <div class="metric cyan"><span>Days Traded</span><strong>{{ stats.days_traded }}</strong><small>Unique trading days</small></div>
     <div class="metric green"><span>Net P/L</span><strong>{{ stats.total }} {{ currency }}</strong><small>Balance: {{ stats.current_balance }} {{ currency }}</small></div>
     <div class="metric purple"><span>Win Rate</span><strong>{{ stats.win_rate }}%</strong><small>{{ stats.wins }}W / {{ stats.losses }}L / {{ stats.be }}BE</small></div>
@@ -92,7 +92,7 @@
         <label>Take Profit <input type="number" step="any" name="take_profit"></label>
         <label>Grade <select name="grade"><option></option><option>A+</option><option>A</option><option>B</option><option>C</option><option>F</option></select></label>
         <label>Commission <input type="number" step="any" min="0" name="commission" value="0"></label>
-        <label>Setup <input name="setup" placeholder="Breakout, pullback..."></label>
+        <label>Setup <input name="setup" list="setup-list" placeholder="Breakout, pullback..."><datalist id="setup-list">{% for setup in playbook_setups %}<option value="{{ setup.name }}">{% endfor %}</datalist></label>
         <label>Tags <input name="tags" placeholder="A+ setup, news, trend"></label>
         <label>Mistake <input name="mistake" placeholder="FOMO, early exit..."></label>
         <label>Emotion before <input name="emotion_before" placeholder="Focused, anxious..."></label>

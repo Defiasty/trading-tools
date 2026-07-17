@@ -12,5 +12,5 @@ profit_target.txt
 max_loss_limit.txt
 daily_loss_limit.txt
 consistency_limit.txt
+account_profile.txt
 .env
-

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}Trading Tracker v5.1 — Topstep{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">TT</div>
+            <div><strong>Trading Tracker</strong><span>Topstep v5.1</span></div>
+        </div>
+        <nav>
+            <a class="active" href="{{ url_for('index') }}">Overview</a>
+            <a href="{{ url_for('index') }}#add-trade" data-add-trade>New Trade</a>
+            <a href="{{ url_for('index') }}#calendar">Calendar</a>
+            <a href="{{ url_for('index') }}#analytics">Analytics</a>
+            <a href="{{ url_for('index') }}#history">History</a>
+            <a href="{{ url_for('settings') }}">Settings</a>
+        </nav>
+        <div class="side-card">
+            <span>Starting Balance</span>
+            <strong>{{ stats.start_balance if stats is defined else balance }} {{ currency }}</strong>
+            <small>Your data is stored locally</small>
+        </div>
+    </aside>
+    <main class="main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="notifications">{% for category, msg in messages %}<div class="notice {{ category }}">{{ msg }}</div>{% endfor %}</div>{% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+</div>
+<div id="imageModal" class="image-modal" onclick="closeImageModal()"><img id="modalImage" src="" alt="Trade screenshot preview"></div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

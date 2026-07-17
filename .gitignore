@@ -14,3 +14,9 @@ daily_loss_limit.txt
 consistency_limit.txt
 account_profile.txt
 .env
+.build-venv/
+build/
+dist/
+installer-output/
+*.spec
+static/img/*-source*.png

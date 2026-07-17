@@ -28,7 +28,7 @@ def allowed_file(filename):
 
 def setting(name, default):
     try:
-        with open(name, "r", encoding="utf-8") as file:
+        with open(os.path.join(app.config["DATA_DIR"], name), "r", encoding="utf-8") as file:
             value = file.read().strip()
             return value if value else default
     except FileNotFoundError:
@@ -456,7 +456,7 @@ def settings():
             return redirect(url_for("settings"))
         values = {"currency.txt": currency_value, "account_profile.txt": selected_profile, **{name: str(value) for name, value in numeric.items()}}
         for filename, value in values.items():
-            with open(filename, "w", encoding="utf-8") as file:
+            with open(os.path.join(app.config["DATA_DIR"], filename), "w", encoding="utf-8") as file:
                 file.write(value)
         flash("Settings saved.", "success")
         return redirect(url_for("index"))
@@ -571,11 +571,11 @@ def export_csv():
 def backup():
     memory = io.BytesIO()
     with zipfile.ZipFile(memory, "w", zipfile.ZIP_DEFLATED) as archive:
-        database_path = os.path.join(app.root_path, "trades.db")
+        database_path = os.path.join(app.config["DATA_DIR"], "trades.db")
         if os.path.exists(database_path):
             archive.write(database_path, "trades.db")
         for filename in ("currency.txt", "balance.txt", "profit_target.txt", "max_loss_limit.txt", "daily_loss_limit.txt", "consistency_limit.txt"):
-            path = os.path.join(app.root_path, filename)
+            path = os.path.join(app.config["DATA_DIR"], filename)
             if os.path.exists(path):
                 archive.write(path, filename)
         for filename in os.listdir(app.config["UPLOAD_FOLDER"]):

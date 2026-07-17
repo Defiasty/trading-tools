@@ -4,12 +4,9 @@ Local futures trading journal with a built-in position-size calculator, Topstep 
 
 ## Install on Windows
 
-1. Download and extract the repository.
-2. Double-click `INSTALL.bat` for a local installation and desktop shortcut.
+Download `TradingTracker-Setup-6.1.0.exe`, run the installer and launch Trading Tracker from the desktop or Start menu. The installed application includes its own Python runtime and dependencies; Python does not need to be installed separately.
 
-For portable use, run `start.bat` directly. Open `http://127.0.0.1:5000` if the browser does not open automatically.
-
-The launcher creates a Python virtual environment and installs the two dependencies from `requirements.txt`.
+Developers can still run the source version with `start.bat` or reproduce the Windows installer with `build-installer.ps1`.
 
 ## Privacy
 
@@ -25,7 +22,7 @@ Use **Backup** in the app to download a ZIP containing the local database, scree
 
 ## Updates
 
-Run `UPDATE.bat` to download the latest code from the public repository. The updater preserves `trades.db`, screenshots, account settings and the Python environment.
+Installing a newer version over the existing installation preserves the database, screenshots and account settings stored under `%LOCALAPPDATA%\TradingTracker`.
 
 ## Highlights
 

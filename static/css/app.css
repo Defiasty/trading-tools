@@ -7,7 +7,7 @@ body{margin:0;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;back
 .layout{display:grid;grid-template-columns:285px 1fr;min-height:100vh}
 .sidebar{position:sticky;top:0;height:100vh;padding:28px 20px;border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(8,12,28,.96),rgba(5,7,18,.96));backdrop-filter:blur(20px)}
 .brand{display:flex;align-items:center;gap:14px;margin-bottom:34px}
-.brand-logo{width:50px;height:50px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,var(--blue),var(--purple));font-weight:900;box-shadow:0 18px 55px rgba(139,92,246,.36)}
+.brand-logo{width:50px;height:50px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,var(--blue),var(--purple));font-weight:900;box-shadow:0 18px 55px rgba(139,92,246,.36);overflow:hidden}.brand-logo img{width:100%;height:100%;object-fit:contain;padding:3px}
 .brand strong{display:block;font-size:18px}.brand span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1px}
 nav a{display:block;color:#dce8ff;text-decoration:none;margin:8px 0;padding:14px 16px;border-radius:15px;transition:.15s}
 nav a:hover,nav a.active{background:linear-gradient(135deg,rgba(139,92,246,.42),rgba(79,166,255,.16));transform:translateX(3px)}

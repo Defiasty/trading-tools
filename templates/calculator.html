@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Position Size Calculator — Trading Tracker{% endblock %}
+{% block content %}
+<header class="top">
+    <div>
+        <div class="pretitle">Risk Management / Position Sizing</div>
+        <h1>Position Size Calculator</h1>
+        <p>Match the number of futures contracts to your risk limit and stop loss.</p>
+    </div>
+    <a href="{{ url_for('index') }}" class="btn">Back to Dashboard</a>
+</header>
+
+<section class="calculator-grid" data-position-calculator data-currency="{{ currency }}">
+    <div class="panel calculator-form-panel">
+        <div class="panel-head"><div><h2>Trade parameters</h2><small>Results update automatically while you type</small></div><span class="step-badge">1</span></div>
+        <div class="calculator-form">
+            <label>Instrument
+                <select id="calcInstrument">
+                    <option value="NQ">NQ — Nasdaq E-mini</option><option value="MNQ" selected>MNQ — Micro Nasdaq</option>
+                    <option value="ES">ES — S&amp;P 500 E-mini</option><option value="MES">MES — Micro S&amp;P 500</option>
+                    <option value="YM">YM — Dow E-mini</option><option value="MYM">MYM — Micro Dow</option>
+                    <option value="RTY">RTY — Russell 2000 E-mini</option><option value="M2K">M2K — Micro Russell 2000</option>
+                    <option value="CL">CL — Crude Oil</option><option value="MCL">MCL — Micro Crude Oil</option>
+                    <option value="GC">GC — Gold</option><option value="MGC">MGC — Micro Gold</option>
+                </select>
+            </label>
+            <label>Account size
+                <div class="input-suffix"><input id="calcAccount" type="number" min="0" step="100" value="{{ balance }}"><span>{{ currency }}</span></div>
+            </label>
+            <label>Maximum risk
+                <div class="input-combo"><input id="calcRisk" type="number" min="0" step="0.1" value="1"><select id="calcRiskMode" aria-label="Risk mode"><option value="percent">%</option><option value="money">{{ currency }}</option></select></div>
+            </label>
+            <label>Stop loss input
+                <select id="calcStopMode"><option value="points">Distance in points</option><option value="prices">Entry and stop prices</option></select>
+            </label>
+            <label id="calcPointsWrap">Stop distance (points)<input id="calcStopPoints" type="number" min="0" step="0.25" value="20"></label>
+            <label id="calcEntryWrap" class="hidden">Entry price<input id="calcEntry" type="number" min="0" step="any" placeholder="e.g. 22150.00"></label>
+            <label id="calcStopWrap" class="hidden">Stop price<input id="calcStop" type="number" min="0" step="any" placeholder="e.g. 22130.00"></label>
+            <label>Direction<select id="calcDirection"><option value="long">Long</option><option value="short">Short</option></select></label>
+            <label>Planned reward/risk<input id="calcRr" type="number" min="0.1" step="0.1" value="2"></label>
+            <label>Round-trip commission / contract
+                <div class="input-suffix"><input id="calcCommission" type="number" min="0" step="0.01" value="0"><span>{{ currency }}</span></div>
+            </label>
+        </div>
+        <div id="calcError" class="calculator-message error-message hidden"></div>
+        <button id="calcSave" class="btn primary calculator-save" type="button">Calculate &amp; save to history</button>
+    </div>
+
+    <div class="panel calculator-result-panel">
+        <div class="panel-head"><div><h2>Position plan</h2><small>Maximum size within your risk limit</small></div><span class="step-badge">2</span></div>
+        <div class="contract-result"><span id="calcResultSymbol">MNQ</span><strong id="calcContracts">6</strong><small id="calcContractsLabel">contracts</small></div>
+        <div class="calculator-stats">
+            <div><span>Risk budget</span><strong id="calcBudget">—</strong></div>
+            <div><span>Risk / contract</span><strong id="calcRiskOne">—</strong></div>
+            <div><span>Actual risk</span><strong id="calcActualRisk">—</strong></div>
+            <div><span>Account risk</span><strong id="calcActualPercent">—</strong></div>
+            <div><span>Potential net profit</span><strong class="plus" id="calcProfit">—</strong></div>
+            <div><span>Unused risk</span><strong id="calcUnused">—</strong></div>
+        </div>
+        <div class="trade-plan-box">
+            <h3>Order plan</h3>
+            <div><span>Stop distance</span><strong id="calcPlanStop">—</strong></div>
+            <div><span>Tick size / value</span><strong id="calcTick">—</strong></div>
+            <div><span>Target distance</span><strong id="calcTargetPoints">—</strong></div>
+            <div id="calcTargetRow" class="hidden"><span>Take-profit price</span><strong id="calcTargetPrice">—</strong></div>
+        </div>
+        <div id="calcWarning" class="calculator-message warning-message hidden"></div>
+        <button id="calcUsePlan" class="btn calculator-use-plan" type="button">Use this plan in New Trade</button>
+        <p class="calculator-disclaimer">Planning tool only. Confirm the current contract specification, fees and prop-firm rules before placing an order.</p>
+    </div>
+</section>
+
+<section class="panel calculator-history">
+    <div class="panel-head"><div><h2>Recent calculations</h2><small>Stored only in this browser</small></div><button id="calcClear" class="btn" type="button">Clear history</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Instrument</th><th>Account</th><th>Stop</th><th>Risk limit</th><th>Contracts</th><th>Actual risk</th><th>Potential profit</th></tr></thead><tbody id="calcHistoryBody"></tbody></table></div>
+    <p id="calcEmptyHistory" class="empty">No saved calculations yet.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/calculator.js') }}"></script>{% endblock %}

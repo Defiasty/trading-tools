@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Trade Review — Trading Tracker{% endblock %}
+{% block content %}
+<header class="top"><div><div class="pretitle">Review / Trade #{{ trade.id }}</div><h1>{{ trade.instrument }} {{ trade.direction_label() }}</h1><p>{{ trade.date }} at {{ trade.time or '—' }} · {{ trade.session or 'Other' }}</p></div><div class="top-actions"><a class="btn" href="{{ url_for('index') }}#history">History</a><a class="btn primary" href="{{ url_for('edit', trade_id=trade.id) }}">Edit Review</a></div></header>
+<section class="review-grid">
+    <div class="panel review-main">
+        {% if trade.image %}<button class="review-image" type="button" onclick="openImageModal('{{ url_for('uploaded', filename=trade.image) }}')"><img src="{{ url_for('uploaded', filename=trade.image) }}" alt="Trade screenshot"></button>{% else %}<div class="review-image-empty">No screenshot attached</div>{% endif %}
+        <div class="review-navigation">{% if previous_trade %}<a class="btn" href="{{ url_for('review_trade', trade_id=previous_trade.id) }}">← Previous</a>{% else %}<span></span>{% endif %}{% if next_trade %}<a class="btn" href="{{ url_for('review_trade', trade_id=next_trade.id) }}">Next →</a>{% endif %}</div>
+    </div>
+    <div class="review-side">
+        <div class="panel"><div class="panel-head"><h2>Execution</h2><span class="pill {{ 'buy' if trade.is_long() else 'sell' }}">{{ trade.result() }}</span></div><div class="review-stats"><div><span>Net P/L</span><strong class="{{ 'plus' if trade.pnl() >= 0 else 'minus' }}">{{ trade.pnl()|round(2) }} {{ currency }}</strong></div><div><span>Contracts</span><strong>{{ trade.contracts }}</strong></div><div><span>Entry / Exit</span><strong>{{ trade.entry_price }} / {{ trade.exit_price }}</strong></div><div><span>SL / TP</span><strong>{{ trade.stop_loss or '—' }} / {{ trade.take_profit or '—' }}</strong></div><div><span>Planned RR</span><strong>{{ trade.rr()|round(2) if trade.rr() is not none else '—' }}</strong></div><div><span>Realized R</span><strong>{{ trade.realized_r()|round(2) if trade.realized_r() is not none else '—' }}</strong></div></div></div>
+        <div class="panel review-journal"><h2>Journal</h2><dl><dt>Setup</dt><dd>{{ trade.setup or '—' }}</dd><dt>Grade</dt><dd>{{ trade.grade or '—' }}</dd><dt>Mistake</dt><dd>{{ trade.mistake or '—' }}</dd><dt>Emotion before / after</dt><dd>{{ trade.emotion_before or '—' }} / {{ trade.emotion_after or '—' }}</dd><dt>Tags</dt><dd>{{ trade.tags or '—' }}</dd><dt>Market context</dt><dd>{{ trade.context or '—' }}</dd><dt>Notes</dt><dd>{{ trade.notes or '—' }}</dd></dl></div>
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/app.js') }}"></script>{% endblock %}

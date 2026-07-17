@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 </head>
 <body>
 <div class="layout">
@@ -20,6 +22,7 @@
             <a href="{{ url_for('index') }}#calendar">Calendar</a>
             <a href="{{ url_for('index') }}#analytics">Analytics</a>
             <a href="{{ url_for('index') }}#history">History</a>
+            <a href="{{ url_for('calculator') }}">Position Calculator</a>
             <a href="{{ url_for('settings') }}">Settings</a>
         </nav>
         <div class="side-card">
@@ -36,6 +39,17 @@
     </main>
 </div>
 <div id="imageModal" class="image-modal" onclick="closeImageModal()"><img id="modalImage" src="" alt="Trade screenshot preview"></div>
+<div id="deleteModal" class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" hidden>
+    <div class="confirm-card">
+        <div class="confirm-icon">!</div>
+        <h2 id="deleteModalTitle">Delete this trade?</h2>
+        <p id="deleteModalText">This action cannot be undone.</p>
+        <div class="confirm-actions">
+            <button class="btn" type="button" data-delete-cancel>Cancel</button>
+            <button class="btn danger-btn" type="button" data-delete-confirm>Delete trade</button>
+        </div>
+    </div>
+</div>
 {% block scripts %}{% endblock %}
 </body>
 </html>

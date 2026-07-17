@@ -8,6 +8,8 @@
     </div>
     <div class="top-actions">
         <a href="#add-trade" class="btn primary" data-add-trade>+ Add Trade</a>
+        <a href="{{ url_for('export_csv') }}" class="btn">Export CSV</a>
+        <a href="{{ url_for('backup') }}" class="btn">Backup</a>
         <a href="{{ url_for('settings') }}" class="btn">Settings</a>
     </div>
 </header>
@@ -21,13 +23,24 @@
     <div class="metric blue"><span>Profit Factor</span><strong>{{ stats.profit_factor }}</strong><small>Gross profit / gross loss</small></div>
     <div class="metric orange"><span>Average RR</span><strong>{{ stats.avg_rr }}</strong><small>Average planned RR</small></div>
     <div class="metric"><span>Expectancy</span><strong>{{ stats.expectancy }} {{ currency }}</strong><small>Average per trade</small></div>
+    <div class="metric red"><span>Daily Loss Available</span><strong>{{ stats.daily_loss_remaining }} {{ currency }}</strong><small>Today: {{ stats.today_pnl }} {{ currency }}</small></div>
+    <div class="metric {{ 'green' if stats.consistency_ok else 'orange' }}"><span>Consistency</span><strong>{{ stats.consistency }}%</strong><small>Limit: {{ stats.consistency_limit }}%</small></div>
+    <div class="metric green"><span>Best Day</span><strong>{{ stats.best_day }} {{ currency }}</strong><small>Highest daily result</small></div>
+    <div class="metric red"><span>Worst Day</span><strong>{{ stats.worst_day }} {{ currency }}</strong><small>Lowest daily result</small></div>
 </section>
 
 <section id="analytics" class="charts-grid">
     <div class="panel big chart-panel">
         <div class="panel-head">
             <div><h2>Equity Curve</h2><small>Balance after every trade</small></div>
-            <span>{{ all_count }} trades • hover for details</span>
+            <div class="chart-heading-actions">
+                <span>{{ stats.count }} trades • wheel to zoom • drag to pan</span>
+                <div class="chart-controls">
+                    <button type="button" data-chart-action="zoom-in" title="Zoom in">+</button>
+                    <button type="button" data-chart-action="zoom-out" title="Zoom out">−</button>
+                    <button type="button" data-chart-action="reset">Reset</button>
+                </div>
+            </div>
         </div>
         <div class="chart-wrap equity-chart"><canvas id="equityChart" aria-label="Equity curve"></canvas></div>
     </div>
@@ -43,6 +56,20 @@
         <div class="panel-head"><div><h2>Session P/L</h2><small>Net performance by session</small></div></div>
         <div class="chart-wrap compact-chart"><canvas id="sessionChart" aria-label="Session profit and loss chart"></canvas></div>
     </div>
+    <div class="panel chart-panel">
+        <div class="panel-head"><div><h2>Day of Week</h2><small>Performance by weekday</small></div></div>
+        <div class="chart-wrap compact-chart"><canvas id="weekdayChart" aria-label="Weekday performance chart"></canvas></div>
+    </div>
+    <div class="panel chart-panel">
+        <div class="panel-head"><div><h2>Entry Time</h2><small>Performance by hour</small></div></div>
+        <div class="chart-wrap compact-chart"><canvas id="hourChart" aria-label="Hourly performance chart"></canvas></div>
+    </div>
+</section>
+
+<section class="insights-grid">
+    <div class="panel"><div class="panel-head"><div><h2>Setup Performance</h2><small>Net P/L by playbook setup</small></div></div>{% for name, value in pnl_by_setup %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% endfor %}</div>
+    <div class="panel"><div class="panel-head"><div><h2>Direction Performance</h2><small>Long versus short</small></div></div>{% for name, value in pnl_by_direction %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% endfor %}</div>
+    <div class="panel"><div class="panel-head"><div><h2>Grade Performance</h2><small>Results by execution grade</small></div></div>{% for name, value in pnl_by_grade %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% endfor %}</div>
 </section>
 
 <section class="split">
@@ -52,24 +79,33 @@
         <span>NQ / MNQ / ES / MES</span>
     </div>
     <form class="form" action="{{ url_for('add') }}" method="post" enctype="multipart/form-data" data-new-trade-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label>Date <input id="trade-date" type="date" name="date" value="{{ default_date }}" required></label>
         <label>Time <input id="trade-time" type="time" name="time" value="{{ default_time }}" required></label>
         <label>Session <select name="session">{% for session in sessions %}<option {{ 'selected' if session == 'New York' else '' }}>{{ session }}</option>{% endfor %}</select></label>
-        <label>Instrument <input name="instrument" placeholder="MNQ" required></label>
-        <label>Direction <select name="direction"><option value="Kupno">Buy</option><option value="Sprzedaż">Sell</option></select></label>
+        <label>Instrument <input name="instrument" list="instrument-list" placeholder="MNQ" required><datalist id="instrument-list">{% for symbol in ['NQ','MNQ','ES','MES','YM','MYM','RTY','M2K','CL','MCL','GC','MGC'] %}<option value="{{ symbol }}">{% endfor %}</datalist></label>
+        <label>Direction <select name="direction"><option value="Buy">Buy</option><option value="Sell">Sell</option></select></label>
         <label>Contracts <input type="number" step="any" min="0.01" name="contracts" value="1" required></label>
         <label>Entry <input type="number" step="any" name="entry_price" required></label>
         <label>Exit <input type="number" step="any" name="exit_price" required></label>
         <label>Stop Loss <input type="number" step="any" name="stop_loss"></label>
         <label>Take Profit <input type="number" step="any" name="take_profit"></label>
         <label>Grade <select name="grade"><option></option><option>A+</option><option>A</option><option>B</option><option>C</option><option>F</option></select></label>
+        <label>Commission <input type="number" step="any" min="0" name="commission" value="0"></label>
+        <label>Setup <input name="setup" placeholder="Breakout, pullback..."></label>
+        <label>Tags <input name="tags" placeholder="A+ setup, news, trend"></label>
+        <label>Mistake <input name="mistake" placeholder="FOMO, early exit..."></label>
+        <label>Emotion before <input name="emotion_before" placeholder="Focused, anxious..."></label>
+        <label>Emotion after <input name="emotion_after" placeholder="Calm, frustrated..."></label>
+        <label class="wide">Market context <textarea name="context" placeholder="Trend, key levels, news and market conditions"></textarea></label>
         <label class="wide">Notes <textarea name="notes" placeholder="Why did I enter? What went well? What should I improve?"></textarea></label>
         <label class="wide">Screenshot <input type="file" name="image" accept="image/*"></label>
+        <div class="trade-live-preview wide" data-trade-preview><span>Estimated P/L<strong data-preview-pnl>—</strong></span><span>Planned risk<strong data-preview-risk>—</strong></span><span>Planned RR<strong data-preview-rr>—</strong></span></div>
         <button class="btn primary wide" type="submit">Save Trade</button>
     </form>
 </div>
 <div class="right-stack">
-    <div id="calendar" class="panel anchor-section"><div class="panel-head"><div><h2>P/L Calendar</h2><small>{{ current_month }}</small></div><span>Current month</span></div><div class="calendar">{% for d in calendar_days %}<div class="day {{ 'day-plus' if d.pnl > 0 else 'day-minus' if d.pnl < 0 else '' }}"><b>{{ d.day }}</b><span>{{ d.pnl }} {{ currency }}</span>{% if d.count %}<small>{{ d.count }} trade{{ '' if d.count == 1 else 's' }}</small>{% endif %}</div>{% endfor %}</div></div>
+    <div id="calendar" class="panel anchor-section"><div class="panel-head"><div><h2>P/L Calendar</h2><small>{{ current_month }}</small></div><div class="calendar-nav"><a href="{{ url_for('index', month=previous_month) }}#calendar">‹</a><a href="{{ url_for('index') }}#calendar">Today</a><a href="{{ url_for('index', month=next_month) }}#calendar">›</a></div></div><div class="calendar-weekdays">{% for day in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<span>{{ day }}</span>{% endfor %}</div><div class="calendar">{% for _ in calendar_blanks %}<div class="day day-empty"></div>{% endfor %}{% for d in calendar_days %}<a href="{{ url_for('index', date=d.date) }}#history" class="day {{ 'day-plus' if d.pnl > 0 else 'day-minus' if d.pnl < 0 else '' }}"><b>{{ d.day }}</b><span>{{ d.pnl }} {{ currency }}</span>{% if d.count %}<small>{{ d.count }} trade{{ '' if d.count == 1 else 's' }}</small>{% endif %}</a>{% endfor %}</div></div>
     <div class="panel"><div class="panel-head"><h2>Best Instruments</h2></div>{% for name, value in pnl_by_instrument %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% else %}<p class="muted">No data yet.</p>{% endfor %}</div>
     <div class="panel"><div class="panel-head"><h2>Sessions</h2></div>{% for name, value in pnl_by_session %}<div class="rank"><span>{{ name }}</span><strong class="{{ 'plus' if value >= 0 else 'minus' }}">{{ value|round(2) }} {{ currency }}</strong></div>{% else %}<p class="muted">No data yet.</p>{% endfor %}</div>
 </div>
@@ -77,16 +113,16 @@
 
 <section id="history" class="panel anchor-section">
 <div class="panel-head"><div><h2>Trade History</h2><small>Edit any saved trade without losing your history</small></div><span>{{ stats.count }} filtered results</span></div>
-<form class="filters" method="get">
+<form class="filters" method="get" data-auto-filter>
     <input name="q" placeholder="Search notes or grade" value="{{ filters.get('q', '') }}">
     <select name="instrument"><option value="">All instruments</option>{% for i in instruments %}<option value="{{ i }}" {{ 'selected' if filters.get('instrument') == i else '' }}>{{ i }}</option>{% endfor %}</select>
     <select name="session"><option value="">All sessions</option>{% for s in sessions %}<option value="{{ s }}" {{ 'selected' if filters.get('session') == s else '' }}>{{ s }}</option>{% endfor %}</select>
     <select name="result"><option value="">All results</option><option value="WIN" {{ 'selected' if filters.get('result') == 'WIN' else '' }}>WIN</option><option value="LOSS" {{ 'selected' if filters.get('result') == 'LOSS' else '' }}>LOSS</option><option value="BE" {{ 'selected' if filters.get('result') == 'BE' else '' }}>BE</option></select>
-    <button class="btn" type="submit">Filter</button><a class="btn" href="{{ url_for('index') }}#history">Reset</a>
+    <span class="filter-status" aria-live="polite">Auto filter</span><a class="btn" href="{{ url_for('index') }}#history">Reset</a>
 </form>
 <div class="table-wrap"><table><thead><tr><th>Date & Time</th><th>Session</th><th>Instrument</th><th>Direction</th><th>Contracts</th><th>P/L</th><th>RR</th><th>Realized R</th><th>Grade</th><th>Screenshot</th><th>Actions</th></tr></thead><tbody>
 {% for t in trades %}<tr>
-<td>{{ t.date }}{% if t.time %}<small class="cell-subline">{{ t.time }}</small>{% endif %}</td><td>{{ t.session }}</td><td><b>{{ t.instrument }}</b></td><td><span class="pill {{ 'buy' if t.is_long() else 'sell' }}">{{ t.direction_label() }}</span></td><td>{{ t.contracts }}</td><td class="{{ 'plus' if t.pnl() >= 0 else 'minus' }}">{{ t.pnl()|round(2) }} {{ currency }}</td><td>{{ t.rr()|round(2) if t.rr() is not none else '—' }}</td><td>{{ t.realized_r()|round(2) if t.realized_r() is not none else '—' }}</td><td>{{ t.grade or '—' }}</td><td>{% if t.image %}<button class="link-btn" onclick="openImageModal('{{ url_for('uploaded', filename=t.image) }}')" type="button">Preview</button>{% else %}—{% endif %}</td><td><div class="table-actions"><a class="action-btn edit-action" href="{{ url_for('edit', trade_id=t.id) }}">Edit</a><form action="{{ url_for('delete', trade_id=t.id) }}" method="post"><button class="action-btn delete-action" onclick="return confirm('Delete this trade?')" type="submit">Delete</button></form></div></td>
+<td>{{ t.date }}{% if t.time %}<small class="cell-subline">{{ t.time }}</small>{% endif %}</td><td>{{ t.session }}</td><td><b>{{ t.instrument }}</b></td><td><span class="pill {{ 'buy' if t.is_long() else 'sell' }}">{{ t.direction_label() }}</span></td><td>{{ t.contracts }}</td><td class="{{ 'plus' if t.pnl() >= 0 else 'minus' }}">{{ t.pnl()|round(2) }} {{ currency }}</td><td>{{ t.rr()|round(2) if t.rr() is not none else '—' }}</td><td>{{ t.realized_r()|round(2) if t.realized_r() is not none else '—' }}</td><td>{{ t.grade or '—' }}</td><td>{% if t.image %}<button class="link-btn" onclick="openImageModal('{{ url_for('uploaded', filename=t.image) }}')" type="button">Preview</button>{% else %}—{% endif %}</td><td><div class="table-actions"><a class="action-btn" href="{{ url_for('review_trade', trade_id=t.id) }}">Review</a><a class="action-btn edit-action" href="{{ url_for('edit', trade_id=t.id) }}">Edit</a><form action="{{ url_for('delete', trade_id=t.id) }}" method="post" data-delete-form data-trade-label="#{{ t.id }} · {{ t.instrument }} · {{ t.date }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="action-btn delete-action" type="submit">Delete</button></form></div></td>
 </tr>{% else %}<tr><td colspan="11" class="empty">No trades found.</td></tr>{% endfor %}
 </tbody></table></div>
 </section>

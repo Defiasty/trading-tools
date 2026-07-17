@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Settings — Trading Tracker{% endblock %}
+{% block content %}
+<header class="top">
+    <div><div class="pretitle">Settings</div><h1>Account Settings</h1><p>Set the parameters for your Topstep account.</p></div>
+    <a href="{{ url_for('index') }}" class="btn">Back to Dashboard</a>
+</header>
+<section class="panel settings-panel">
+    <form class="form" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Currency <input name="currency" value="{{ currency }}" required></label>
+        <label>Starting Balance <input type="number" step="any" name="balance" value="{{ balance }}" required></label>
+        <label>Profit Target <input type="number" step="any" name="profit_target" value="{{ profit_target }}" required></label>
+        <label>Maximum Loss Limit <input type="number" step="any" name="max_loss_limit" value="{{ max_loss_limit }}" required></label>
+        <label>Daily Loss Limit <input type="number" step="any" name="daily_loss_limit" value="{{ daily_loss_limit }}" required></label>
+        <label>Consistency Limit (%) <input type="number" step="any" name="consistency_limit" value="{{ consistency_limit }}" required></label>
+        <button class="btn primary wide" type="submit">Save Settings</button>
+    </form>
+</section>
+<section class="panel settings-panel data-tools-panel">
+    <div class="panel-head"><div><h2>Data tools</h2><small>Import, export and protect your journal</small></div></div>
+    <div class="data-tools-actions"><a class="btn" href="{{ url_for('export_csv') }}">Export trades to CSV</a><a class="btn primary" href="{{ url_for('backup') }}">Download full backup</a></div>
+    <form class="import-form" action="{{ url_for('import_csv') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Import CSV <input type="file" name="csv_file" accept=".csv,text/csv" required></label>
+        <button class="btn" type="submit">Import trades</button>
+    </form>
+    <p class="muted import-help">Required columns: date, instrument, direction, contracts, entry_price and exit_price. Export a CSV first to get the complete template.</p>
+</section>
+{% endblock %}

@@ -13,6 +13,8 @@ function chartColors() {
     };
 }
 
+let equityChartInstance = null;
+
 function localDateTime() {
     const now = new Date();
     const pad = value => String(value).padStart(2, '0');
@@ -65,6 +67,41 @@ function initAutomaticDateTime() {
             if (timeInput.dataset.automatic === 'true') timeInput.value = current.time;
         });
     }
+}
+
+function initTradePreview() {
+    const form = document.querySelector('[data-new-trade-form]');
+    if (!form) return;
+    const pointValues = { NQ:20, MNQ:2, ES:50, MES:5, YM:5, MYM:.5, RTY:50, M2K:5, CL:1000, MCL:100, GC:100, MGC:10 };
+    const value = name => Number(form.elements[name]?.value || 0);
+    const rootSymbol = symbol => Object.keys(pointValues).sort((a,b) => b.length-a.length).find(key => symbol.startsWith(key));
+    const update = () => {
+        const symbol = String(form.elements.instrument.value || '').trim().toUpperCase();
+        const point = pointValues[rootSymbol(symbol)] || 1;
+        const contracts = value('contracts');
+        const entry = value('entry_price');
+        const exit = value('exit_price');
+        const stop = value('stop_loss');
+        const target = value('take_profit');
+        const commission = value('commission');
+        const isLong = form.elements.direction.value === 'Buy';
+        const pnl = (isLong ? exit - entry : entry - exit) * point * contracts - commission;
+        const risk = stop ? Math.abs(entry - stop) * point * contracts : 0;
+        const reward = target ? Math.abs(target - entry) * point * contracts : 0;
+        form.querySelector('[data-preview-pnl]').textContent = entry && exit ? `${pnl.toFixed(2)}` : '—';
+        form.querySelector('[data-preview-risk]').textContent = risk ? risk.toFixed(2) : '—';
+        form.querySelector('[data-preview-rr]').textContent = risk && reward ? (reward / risk).toFixed(2) : '—';
+    };
+    form.addEventListener('input', update);
+    try {
+        const plan = JSON.parse(sessionStorage.getItem('tracker_trade_plan') || 'null');
+        if (plan) {
+            Object.entries(plan).forEach(([name, fieldValue]) => { if (form.elements[name] && fieldValue !== '') form.elements[name].value = fieldValue; });
+            sessionStorage.removeItem('tracker_trade_plan');
+            form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    } catch (_) { sessionStorage.removeItem('tracker_trade_plan'); }
+    update();
 }
 
 function formatMoney(value, currency, compact = false) {
@@ -174,7 +211,7 @@ async function initCharts() {
     if (!equityCanvas || typeof Chart === 'undefined') return;
 
     try {
-        const response = await fetch('/api/charts');
+        const response = await fetch(`/api/charts${window.location.search}`);
         if (!response.ok) throw new Error('Chart data could not be loaded.');
         const data = await response.json();
         const c = chartColors();
@@ -243,7 +280,7 @@ async function initCharts() {
             }
         };
 
-        new Chart(equityCanvas, {
+        equityChartInstance = new Chart(equityCanvas, {
             type: 'line',
             data: { labels: equityLabels, datasets: equityDatasets },
             options: {
@@ -251,7 +288,19 @@ async function initCharts() {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 layout: { padding: { top: 4, right: 8 } },
-                plugins: equityPlugins,
+                plugins: {
+                    ...equityPlugins,
+                    zoom: {
+                        limits: { x: { minRange: 3 } },
+                        pan: { enabled: true, mode: 'x', threshold: 5 },
+                        zoom: {
+                            wheel: { enabled: true, speed: 0.08 },
+                            pinch: { enabled: true },
+                            drag: { enabled: false },
+                            mode: 'x'
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         grid: { display: false },
@@ -401,6 +450,17 @@ async function initCharts() {
                 }
             }
         });
+
+        const createPerformanceChart = (canvasId, points, emptyMessage) => {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const plugins = commonPlugins();
+            plugins.legend.display = false;
+            plugins.tooltip.callbacks = { label: context => `Net P/L: ${formatMoney(context.parsed.y, currency)}` };
+            new Chart(canvas, { type: 'bar', data: { labels: points.map(point => point.label), datasets: [{ label: 'Net P/L', data: points.map(point => point.value), backgroundColor: points.map(point => point.value >= 0 ? 'rgba(53, 242, 141, .78)' : 'rgba(255, 82, 104, .78)'), borderColor: points.map(point => point.value >= 0 ? c.green : c.red), borderWidth: 1, borderRadius: 6, borderSkipped: false }] }, plugins: [emptyStatePlugin], options: { responsive: true, maintainAspectRatio: false, plugins: { ...plugins, emptyState: { message: emptyMessage } }, scales: { x: { grid: { display: false }, ticks: { color: c.muted, maxRotation: 0 } }, y: { beginAtZero: true, grid: { color: c.grid }, ticks: { color: c.muted, callback: value => formatMoney(value, currency, true) } } } } });
+        };
+        createPerformanceChart('weekdayChart', data.weekday || [], 'No weekday data yet');
+        createPerformanceChart('hourChart', data.hour || [], 'No hourly data yet');
     } catch (error) {
         const panel = equityCanvas.closest('.chart-panel');
         if (panel) {
@@ -425,11 +485,73 @@ function closeImageModal() {
     if (modal) modal.classList.remove('show');
 }
 
+function initChartControls() {
+    document.querySelectorAll('[data-chart-action]').forEach(button => {
+        button.addEventListener('click', () => {
+            if (!equityChartInstance) return;
+            const action = button.dataset.chartAction;
+            if (action === 'reset' && equityChartInstance.resetZoom) equityChartInstance.resetZoom();
+            if (action === 'zoom-in' && equityChartInstance.zoom) equityChartInstance.zoom(1.25);
+            if (action === 'zoom-out' && equityChartInstance.zoom) equityChartInstance.zoom(0.8);
+        });
+    });
+}
+
+function initAutoFilters() {
+    const form = document.querySelector('[data-auto-filter]');
+    if (!form) return;
+    const status = form.querySelector('.filter-status');
+    let timer;
+
+    const submit = () => {
+        if (status) status.textContent = 'Filtering…';
+        const url = new URL(form.action || window.location.href, window.location.origin);
+        const params = new URLSearchParams(new FormData(form));
+        params.forEach((value, key) => { if (!value.trim()) params.delete(key); });
+        url.search = params.toString();
+        url.hash = 'history';
+        window.location.assign(url.toString());
+    };
+
+    form.querySelectorAll('select').forEach(select => select.addEventListener('change', submit));
+    const search = form.querySelector('input[name="q"]');
+    if (search) search.addEventListener('input', () => { clearTimeout(timer); if (status) status.textContent = 'Waiting for typing…'; timer = setTimeout(submit, 450); });
+}
+
+function initDeleteConfirmation() {
+    const modal = document.getElementById('deleteModal');
+    if (!modal) return;
+    const text = document.getElementById('deleteModalText');
+    const confirmButton = modal.querySelector('[data-delete-confirm]');
+    const cancelButton = modal.querySelector('[data-delete-cancel]');
+    let pendingForm = null;
+
+    const close = () => { modal.hidden = true; document.body.classList.remove('modal-open'); pendingForm = null; };
+    document.querySelectorAll('[data-delete-form]').forEach(form => {
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            pendingForm = form;
+            text.textContent = `${form.dataset.tradeLabel || 'This trade'} will be permanently deleted. This action cannot be undone.`;
+            modal.hidden = false;
+            document.body.classList.add('modal-open');
+            cancelButton.focus();
+        });
+    });
+    cancelButton.addEventListener('click', close);
+    confirmButton.addEventListener('click', () => { if (pendingForm) pendingForm.submit(); });
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) close(); });
+}
+
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') closeImageModal();
 });
 
 document.addEventListener('DOMContentLoaded', () => {
     initAutomaticDateTime();
+    initTradePreview();
     initCharts();
+    initChartControls();
+    initAutoFilters();
+    initDeleteConfirmation();
 });

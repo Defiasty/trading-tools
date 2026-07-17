@@ -1,9 +1,13 @@
 from collections import defaultdict
 from datetime import date, datetime
 import calendar
+import csv
+import io
 import os
+import secrets
+import zipfile
 
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
 
 from config import Config
@@ -54,6 +58,29 @@ def max_loss_limit():
     return number_setting("max_loss_limit.txt", 2000)
 
 
+def daily_loss_limit():
+    return number_setting("daily_loss_limit.txt", 1000)
+
+
+def consistency_limit():
+    return number_setting("consistency_limit.txt", 50)
+
+
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(24)
+    return session["csrf_token"]
+
+
+app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+@app.before_request
+def protect_post_requests():
+    if request.method == "POST" and request.form.get("csrf_token") != session.get("csrf_token"):
+        abort(400, description="Invalid or expired form token. Refresh the page and try again.")
+
+
 def parse_float(value, default=0):
     try:
         if value is None or value == "":
@@ -94,8 +121,8 @@ def apply_trade_form(trade, form, use_current_datetime=False):
     if not instrument:
         raise ValueError("Instrument is required.")
 
-    direction = form.get("direction") or "Kupno"
-    if direction not in {"Kupno", "Sprzedaż"}:
+    direction = (form.get("direction") or "Buy").strip()
+    if direction not in {"Buy", "Sell", "Kupno", "Sprzedaż"}:
         raise ValueError("Direction must be Buy or Sell.")
 
     contracts = required_float(form.get("contracts"), "Contracts")
@@ -112,6 +139,13 @@ def apply_trade_form(trade, form, use_current_datetime=False):
     trade.take_profit = parse_float(form.get("take_profit"), None) if form.get("take_profit") else None
     trade.grade = form.get("grade") or ""
     trade.notes = form.get("notes") or ""
+    trade.commission = max(0, parse_float(form.get("commission"), 0))
+    trade.setup = (form.get("setup") or "").strip()
+    trade.tags = (form.get("tags") or "").strip()
+    trade.mistake = (form.get("mistake") or "").strip()
+    trade.emotion_before = (form.get("emotion_before") or "").strip()
+    trade.emotion_after = (form.get("emotion_after") or "").strip()
+    trade.context = (form.get("context") or "").strip()
 
 
 def save_uploaded_image(image):
@@ -165,6 +199,15 @@ def calc_stats(trades):
     remaining_target = max(0, target - total)
     remaining_drawdown = max(0, loss_limit + min(total, 0))
     days_traded = len({trade.date for trade in trades})
+    pnl_by_day = defaultdict(float)
+    for trade in trades:
+        pnl_by_day[trade.date] += trade.pnl()
+    best_day = max(pnl_by_day.values(), default=0)
+    worst_day = min(pnl_by_day.values(), default=0)
+    best_day_share = best_day / total * 100 if total > 0 and best_day > 0 else 0
+    consistency = max(0, best_day_share)
+    daily_limit = daily_loss_limit()
+    today_pnl = pnl_by_day.get(date.today(), 0)
 
     return {
         "start_balance": round(start, 2),
@@ -186,6 +229,14 @@ def calc_stats(trades):
         "remaining_target": round(remaining_target, 2),
         "remaining_drawdown": round(remaining_drawdown, 2),
         "days_traded": days_traded,
+        "best_day": round(best_day, 2),
+        "worst_day": round(worst_day, 2),
+        "consistency": round(consistency, 1),
+        "consistency_limit": consistency_limit(),
+        "consistency_ok": consistency <= consistency_limit(),
+        "today_pnl": round(today_pnl, 2),
+        "daily_loss_remaining": round(max(0, daily_limit + min(today_pnl, 0)), 2),
+        "daily_loss_limit": round(daily_limit, 2),
     }
 
 
@@ -194,17 +245,23 @@ def apply_filters(query):
     session_name = request.args.get("session", "").strip()
     result = request.args.get("result", "").strip()
     text = request.args.get("q", "").strip().lower()
+    trade_date = request.args.get("date", "").strip()
 
     if instrument:
         query = query.filter(Trade.instrument == instrument.upper())
     if session_name:
         query = query.filter(Trade.session == session_name)
+    if trade_date:
+        try:
+            query = query.filter(Trade.date == datetime.strptime(trade_date, "%Y-%m-%d").date())
+        except ValueError:
+            pass
 
     trades = query.order_by(Trade.date.desc(), Trade.time.desc()).all()
     if result:
         trades = [trade for trade in trades if trade.result() == result]
     if text:
-        trades = [trade for trade in trades if text in (trade.notes or "").lower() or text in (trade.grade or "").lower()]
+        trades = [trade for trade in trades if any(text in (value or "").lower() for value in (trade.notes, trade.grade, trade.setup, trade.tags, trade.mistake))]
     return trades
 
 
@@ -219,23 +276,37 @@ def index():
 
     pnl_by_instrument = defaultdict(float)
     pnl_by_session = defaultdict(float)
+    pnl_by_setup = defaultdict(float)
+    pnl_by_direction = defaultdict(float)
+    pnl_by_grade = defaultdict(float)
     for trade in trades:
         pnl_by_instrument[trade.instrument] += trade.pnl()
         pnl_by_session[trade.session or "Other"] += trade.pnl()
+        pnl_by_setup[trade.setup or "Unclassified"] += trade.pnl()
+        pnl_by_direction[trade.direction_label()] += trade.pnl()
+        pnl_by_grade[trade.grade or "Not graded"] += trade.pnl()
 
     today = date.today()
-    _, month_days = calendar.monthrange(today.year, today.month)
+    month_value = request.args.get("month", today.strftime("%Y-%m"))
+    try:
+        shown_month = datetime.strptime(month_value, "%Y-%m").date().replace(day=1)
+    except ValueError:
+        shown_month = today.replace(day=1)
+    _, month_days = calendar.monthrange(shown_month.year, shown_month.month)
     pnl_by_day = defaultdict(float)
     count_by_day = defaultdict(int)
     for trade in all_trades:
-        if trade.date.year == today.year and trade.date.month == today.month:
+        if trade.date.year == shown_month.year and trade.date.month == shown_month.month:
             pnl_by_day[trade.date.day] += trade.pnl()
             count_by_day[trade.date.day] += 1
 
     calendar_days = [
-        {"day": day, "pnl": round(pnl_by_day[day], 2), "count": count_by_day[day]}
+        {"day": day, "date": shown_month.replace(day=day).isoformat(), "pnl": round(pnl_by_day[day], 2), "count": count_by_day[day]}
         for day in range(1, month_days + 1)
     ]
+    first_weekday = shown_month.weekday()
+    previous_month = (shown_month.replace(day=1) - __import__("datetime").timedelta(days=1)).strftime("%Y-%m")
+    next_month = (shown_month.replace(day=month_days) + __import__("datetime").timedelta(days=1)).strftime("%Y-%m")
 
     now = datetime.now()
 
@@ -249,11 +320,17 @@ def index():
         sessions=sessions,
         pnl_by_instrument=sorted(pnl_by_instrument.items(), key=lambda item: item[1], reverse=True),
         pnl_by_session=sorted(pnl_by_session.items(), key=lambda item: item[1], reverse=True),
+        pnl_by_setup=sorted(pnl_by_setup.items(), key=lambda item: item[1], reverse=True),
+        pnl_by_direction=sorted(pnl_by_direction.items(), key=lambda item: item[1], reverse=True),
+        pnl_by_grade=sorted(pnl_by_grade.items(), key=lambda item: item[1], reverse=True),
         calendar_days=calendar_days,
         filters=request.args,
         default_date=now.strftime("%Y-%m-%d"),
         default_time=now.strftime("%H:%M"),
-        current_month=now.strftime("%B %Y"),
+        current_month=shown_month.strftime("%B %Y"),
+        calendar_blanks=range(first_weekday),
+        previous_month=previous_month,
+        next_month=next_month,
     )
 
 
@@ -264,7 +341,7 @@ def add():
         trade = Trade(
             date=date.today(),
             instrument="",
-            direction="Kupno",
+            direction="Buy",
             contracts=1,
             entry_price=0,
             exit_price=0,
@@ -338,12 +415,22 @@ def delete(trade_id):
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
-        values = {
-            "currency.txt": request.form.get("currency", "USD"),
-            "balance.txt": request.form.get("balance", "50000"),
-            "profit_target.txt": request.form.get("profit_target", "3000"),
-            "max_loss_limit.txt": request.form.get("max_loss_limit", "2000"),
-        }
+        currency_value = (request.form.get("currency") or "USD").strip().upper()
+        try:
+            numeric = {
+                "balance.txt": required_float(request.form.get("balance"), "Starting balance"),
+                "profit_target.txt": required_float(request.form.get("profit_target"), "Profit target"),
+                "max_loss_limit.txt": required_float(request.form.get("max_loss_limit"), "Maximum loss limit"),
+                "daily_loss_limit.txt": required_float(request.form.get("daily_loss_limit"), "Daily loss limit"),
+                "consistency_limit.txt": required_float(request.form.get("consistency_limit"), "Consistency limit"),
+            }
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("settings"))
+        if len(currency_value) != 3 or any(value <= 0 for value in numeric.values()):
+            flash("Currency must have 3 letters and all limits must be greater than zero.", "danger")
+            return redirect(url_for("settings"))
+        values = {"currency.txt": currency_value, **{name: str(value) for name, value in numeric.items()}}
         for filename, value in values.items():
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(value)
@@ -356,17 +443,106 @@ def settings():
         balance=balance(),
         profit_target=profit_target(),
         max_loss_limit=max_loss_limit(),
+        daily_loss_limit=daily_loss_limit(),
+        consistency_limit=consistency_limit(),
         stats={"start_balance": balance()},
     )
 
 
+@app.route("/calculator")
+def calculator():
+    return render_template(
+        "calculator.html",
+        currency=currency(),
+        balance=balance(),
+        stats={"start_balance": balance()},
+    )
+
+
+@app.route("/review/<int:trade_id>")
+def review_trade(trade_id):
+    trade = Trade.query.get_or_404(trade_id)
+    ordered = Trade.query.order_by(Trade.date, Trade.time, Trade.id).all()
+    index_value = next((index for index, item in enumerate(ordered) if item.id == trade.id), 0)
+    return render_template(
+        "review_trade.html",
+        trade=trade,
+        previous_trade=ordered[index_value - 1] if index_value > 0 else None,
+        next_trade=ordered[index_value + 1] if index_value + 1 < len(ordered) else None,
+        currency=currency(),
+        stats={"start_balance": balance()},
+    )
+
+
+CSV_FIELDS = ["date", "time", "session", "instrument", "direction", "contracts", "entry_price", "exit_price", "stop_loss", "take_profit", "commission", "setup", "tags", "emotion_before", "emotion_after", "grade", "mistake", "context", "notes"]
+
+
+@app.route("/export/csv")
+def export_csv():
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=CSV_FIELDS)
+    writer.writeheader()
+    for trade in Trade.query.order_by(Trade.date, Trade.time).all():
+        writer.writerow({field: getattr(trade, field) if getattr(trade, field) is not None else "" for field in CSV_FIELDS})
+    content = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+    return send_file(content, mimetype="text/csv", as_attachment=True, download_name=f"trades_{date.today().isoformat()}.csv")
+
+
+@app.route("/backup")
+def backup():
+    memory = io.BytesIO()
+    with zipfile.ZipFile(memory, "w", zipfile.ZIP_DEFLATED) as archive:
+        database_path = os.path.join(app.root_path, "trades.db")
+        if os.path.exists(database_path):
+            archive.write(database_path, "trades.db")
+        for filename in ("currency.txt", "balance.txt", "profit_target.txt", "max_loss_limit.txt", "daily_loss_limit.txt", "consistency_limit.txt"):
+            path = os.path.join(app.root_path, filename)
+            if os.path.exists(path):
+                archive.write(path, filename)
+        for filename in os.listdir(app.config["UPLOAD_FOLDER"]):
+            path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            if os.path.isfile(path):
+                archive.write(path, os.path.join("uploads", filename))
+    memory.seek(0)
+    return send_file(memory, mimetype="application/zip", as_attachment=True, download_name=f"trading_tracker_backup_{date.today().isoformat()}.zip")
+
+
+@app.route("/import/csv", methods=["POST"])
+def import_csv():
+    upload = request.files.get("csv_file")
+    if not upload or not upload.filename.lower().endswith(".csv"):
+        flash("Select a CSV file.", "danger")
+        return redirect(url_for("settings"))
+    added = 0
+    try:
+        text_stream = io.StringIO(upload.stream.read().decode("utf-8-sig"), newline=None)
+        reader = csv.DictReader(text_stream)
+        required = {"date", "instrument", "direction", "contracts", "entry_price", "exit_price"}
+        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+            raise ValueError(f"CSV must contain: {', '.join(sorted(required))}.")
+        for row in reader:
+            trade = Trade(date=date.today(), instrument="", direction="Buy", contracts=1, entry_price=0, exit_price=0)
+            apply_trade_form(trade, row)
+            db.session.add(trade)
+            added += 1
+        db.session.commit()
+        flash(f"Imported {added} trades.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Import failed: {exc}", "danger")
+    return redirect(url_for("index") + "#history")
+
+
 @app.route("/api/charts")
 def api_charts():
-    trades = Trade.query.order_by(Trade.date, Trade.time).all()
+    trades = sorted(apply_filters(Trade.query), key=lambda trade: (trade.date, trade.time or ""))
     equity_value = balance()
     equity = []
     monthly = defaultdict(float)
     session_values = defaultdict(float)
+    instrument_values = defaultdict(float)
+    weekday_values = defaultdict(float)
+    hour_values = defaultdict(float)
     result = {"WIN": 0, "LOSS": 0, "BE": 0}
 
     for index, trade in enumerate(trades, start=1):
@@ -384,6 +560,10 @@ def api_charts():
         })
         monthly[trade.date.strftime("%Y-%m")] += pnl
         session_values[trade.session or "Other"] += pnl
+        instrument_values[trade.instrument] += pnl
+        weekday_values[trade.date.strftime("%a")] += pnl
+        if trade.time:
+            hour_values[trade.time[:2] + ":00"] += pnl
         result[trade.result()] += 1
 
     return jsonify({
@@ -392,6 +572,9 @@ def api_charts():
         "equity": equity,
         "monthly": [{"label": key, "value": round(value, 2)} for key, value in sorted(monthly.items())],
         "session": [{"label": key, "value": round(value, 2)} for key, value in sorted(session_values.items(), key=lambda item: item[1], reverse=True)],
+        "instrument": [{"label": key, "value": round(value, 2)} for key, value in sorted(instrument_values.items(), key=lambda item: item[1], reverse=True)],
+        "weekday": [{"label": key, "value": round(weekday_values.get(key, 0), 2)} for key in ["Mon", "Tue", "Wed", "Thu", "Fri"]],
+        "hour": [{"label": key, "value": round(value, 2)} for key, value in sorted(hour_values.items())],
         "result": result,
     })
 
